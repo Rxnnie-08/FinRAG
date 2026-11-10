@@ -71,7 +71,6 @@ async function init() {
   $("demo-note").hidden = !st.synthetic;
   $("engine").textContent = `${st.n_chunks} passages. Vector store: ${st.vector_store}. Embeddings: ${st.embedder}. Answers: ${st.llm}.` +
     ((st.notes || []).length ? " Note: " + st.notes.join(" ") : "");
-  $("bench-btn").hidden = !st.has_gold;
   const ul = $("starter-list");
   (st.examples || []).forEach((q, i) => ul.append(h("li", null, h("button", { type: "button", onclick: () => { $("question").value = q; ask(); } },
     h("span", null, q), (WHY[i] && st.synthetic) ? h("span", { class: "why" }, WHY[i]) : null))));
@@ -89,7 +88,7 @@ async function ask(ev) {
     state.last = ans; state.history.push(q);
     $("clear-btn").hidden = false; $("starters").hidden = true;
     render(ans);
-    for (const id of ["compare", "bench"]) clear($(id));
+    clear($("compare"));
   } catch (e) { showError(e.message); }
   finally { $("ask-btn").disabled = false; $("busy").hidden = true; }
 }
@@ -225,35 +224,14 @@ async function compare() {
   } catch (e) { clear(box).append(h("p", { class: "error" }, e.message)); }
 }
 
-/* ---------------------------------------------------------------- benchmark */
-const f1 = (s, p = true) => (!s || s.n === 0 || s.mean !== s.mean ? "n/a" : p ? `${Math.round(s.mean * 100)}% (${Math.round(s.lo * 100)}-${Math.round(s.hi * 100)})` : Math.round(s.mean));
-async function bench(run) {
-  const box = clear($("bench")); box.append(h("p", { class: "lede" }, run ? "Running the benchmark…" : "Loading…"));
-  try {
-    const r = run ? await api("/api/eval/run", {}) : await api("/api/eval/latest");
-    clear(box);
-    if (!r.available) { box.append(h("p", { class: "lede" }, "No results yet. Run the benchmark to create them.")); return; }
-    const cols = [["recall@3", "Recall@3"], ["mrr", "MRR"], ["answer_correct", "Answer correct"], ["faithful", "Faithful"], ["abstain_ok", "Refuses when it should"], ["latency_ms", "Latency ms"]];
-    const t = h("table", null, h("thead", null, h("tr", null, h("th", { scope: "col" }, "Setup"), cols.map(([, l]) => h("th", { scope: "col" }, l)))));
-    const tb = h("tbody");
-    for (const [name, m] of Object.entries(r.summary))
-      tb.append(h("tr", null, h("td", { class: "cfg" }, name), cols.map(([k]) => h("td", null, k === "mrr" ? m[k].mean.toFixed(2) : f1(m[k], k !== "latency_ms")))));
-    t.append(tb); box.append(t);
-    const list = h("ul", { class: "bench-list" });
-    for (const [k, v] of Object.entries(r.comparisons)) list.append(h("li", null, `${k}: ${v.diff >= 0 ? "+" : ""}${(v.diff * 100).toFixed(1)} points (${(v.lo * 100).toFixed(1)} to ${(v.hi * 100).toFixed(1)}), ${v.significant ? "clear difference" : "could be noise"}.`));
-    box.append(h("p", { class: "bench-note" }, `${r.n_questions} questions, top ${r.k} passages, judge: ${r.judge}. Differences between setups:`), list);
-  } catch (e) { clear(box).append(h("p", { class: "error" }, e.message)); }
-}
-
 /* ---------------------------------------------------------------- tabs + wiring */
-const TABS = ["evidence", "claims", "compare", "bench"];
+const TABS = ["evidence", "claims", "compare"];
 function select(name) {
   for (const t of TABS) {
     const on = t === name;
     $("t-" + t).setAttribute("aria-selected", on); $("t-" + t).tabIndex = on ? 0 : -1;
     $("p-" + t).hidden = !on;
   }
-  if (name === "bench" && !$("bench").firstChild) bench(false);
 }
 TABS.forEach((t, i) => $("t-" + t).addEventListener("click", () => select(t)));
 $("t-evidence").parentElement.addEventListener("keydown", (e) => {
@@ -263,6 +241,5 @@ $("t-evidence").parentElement.addEventListener("keydown", (e) => {
 $("ask-form").addEventListener("submit", ask);
 $("question").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } });
 $("compare-btn").addEventListener("click", compare);
-$("bench-btn").addEventListener("click", () => bench(true));
 $("clear-btn").addEventListener("click", () => { state.history = []; state.last = null; $("result").hidden = true; $("starters").hidden = false; $("clear-btn").hidden = true; $("question").value = ""; $("question").focus(); });
 init().catch((e) => { $("corpus").textContent = e.message; });

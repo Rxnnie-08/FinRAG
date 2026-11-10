@@ -85,7 +85,6 @@
         <button role="tab" id="t-evidence" aria-selected="true" aria-controls="p-evidence">Evidence</button>
         <button role="tab" id="t-claims" aria-selected="false" aria-controls="p-claims" tabindex="-1">Claim check</button>
         <button role="tab" id="t-compare" aria-selected="false" aria-controls="p-compare" tabindex="-1">Compare retrieval</button>
-        <button role="tab" id="t-bench" aria-selected="false" aria-controls="p-bench" tabindex="-1">Benchmark</button>
       </div>
 
       <div class="panes">
@@ -97,11 +96,6 @@
           <p class="lede">Runs the same rewritten question through dense, keyword and hybrid retrieval so you can see where they agree.</p>
           <button type="button" id="compare-btn">Compare for this question</button>
           <div id="compare" class="compare"></div>
-        </div>
-        <div id="p-bench" role="tabpanel" aria-labelledby="t-bench" class="pane" hidden>
-          <p class="lede">Scores every retrieval setup on the gold question set. Intervals are bootstrap 95% ranges; overlapping ranges can be noise.</p>
-          <button type="button" id="bench-btn">Run benchmark</button>
-          <div id="bench"></div>
         </div>
       </div>
 
