@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinRAG: ask your filings</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<a class="skip" href="#question">Skip to question</a>
+<div class="shell">
+  <aside class="rail" aria-label="Corpus and settings">
+    <h1 class="brand">FinRAG</h1>
+    <p class="tagline">Questions about SEC filings, answered with the source row beside them.</p>
+
+    <section aria-labelledby="corpus-h">
+      <h2 id="corpus-h">Filings in the corpus</h2>
+      <p id="demo-note" class="note" hidden>Demo corpus: fictional companies and numbers.</p>
+      <div id="corpus" class="corpus" aria-live="polite">Loading…</div>
+    </section>
+
+    <section aria-labelledby="add-h">
+      <h2 id="add-h">Add a filing</h2>
+      <form id="upload-form" class="upload">
+        <input type="file" id="file" name="file" accept=".htm,.html,.pdf" aria-label="Filing file (.htm, .html or .pdf)">
+        <details>
+          <summary>Details (found automatically)</summary>
+          <label>Company <input name="company" autocomplete="off"></label>
+          <label>Ticker <input name="ticker" autocomplete="off"></label>
+          <label>Form <select name="filing_type"><option value="">auto</option><option>10-K</option><option>10-Q</option><option>8-K</option></select></label>
+          <label>Period end <input name="period_end" placeholder="YYYY-MM-DD" autocomplete="off"></label>
+          <label>Fiscal year end <input name="fiscal_year_end" placeholder="MMDD, e.g. 0930" autocomplete="off"></label>
+        </details>
+        <button type="submit" id="upload-btn">Add and index</button>
+        <p class="note" id="upload-msg" role="status"></p>
+      </form>
+    </section>
+
+    <section aria-labelledby="set-h">
+      <h2 id="set-h">How to search</h2>
+      <fieldset class="seg">
+        <legend>Retrieval</legend>
+        <label><input type="radio" name="mode" value="dense"><span>Dense</span></label>
+        <label><input type="radio" name="mode" value="sparse"><span>Keyword</span></label>
+        <label><input type="radio" name="mode" value="hybrid" checked><span>Hybrid</span></label>
+      </fieldset>
+      <fieldset class="seg">
+        <legend>Question rewriting</legend>
+        <label><input type="radio" name="rewrite" value="off"><span>Off</span></label>
+        <label><input type="radio" name="rewrite" value="rules" checked><span>On</span></label>
+      </fieldset>
+      <label class="field">Passages used
+        <select id="k"><option>3</option><option>5</option><option selected>6</option><option>8</option><option>10</option></select>
+      </label>
+      <p class="note" id="engine"></p>
+    </section>
+  </aside>
+
+  <main class="main">
+    <form id="ask-form" class="ask" autocomplete="off">
+      <label for="question" class="sr">Your question</label>
+      <textarea id="question" rows="2" maxlength="1000" placeholder="Ask about a company, a period and a number, for example total assets in fiscal 2024"></textarea>
+      <div class="ask-row">
+        <button type="submit" id="ask-btn">Ask</button>
+        <button type="button" id="clear-btn" class="quiet" hidden>Clear conversation</button>
+        <span id="busy" class="busy" role="status" hidden>Reading filings…</span>
+      </div>
+    </form>
+
+    <section id="starters" class="starters" aria-label="Example questions">
+      <h2>Try one of these</h2>
+      <ul id="starter-list"></ul>
+    </section>
+
+    <div id="error" class="error" role="alert" hidden></div>
+
+    <article id="result" class="result" hidden>
+      <div class="answer-wrap">
+        <div id="answer" class="answer" aria-live="polite"></div>
+        <ul id="warnings" class="warnings"></ul>
+        <p id="meter" class="meter"></p>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Details">
+        <button role="tab" id="t-evidence" aria-selected="true" aria-controls="p-evidence">Evidence</button>
+        <button role="tab" id="t-claims" aria-selected="false" aria-controls="p-claims" tabindex="-1">Claim check</button>
+        <button role="tab" id="t-compare" aria-selected="false" aria-controls="p-compare" tabindex="-1">Compare retrieval</button>
+        <button role="tab" id="t-bench" aria-selected="false" aria-controls="p-bench" tabindex="-1">Benchmark</button>
+      </div>
+
+      <div class="panes">
+        <div id="p-evidence" role="tabpanel" aria-labelledby="t-evidence" class="pane">
+          <div id="evidence"></div>
+        </div>
+        <div id="p-claims" role="tabpanel" aria-labelledby="t-claims" class="pane" hidden><div id="claims"></div></div>
+        <div id="p-compare" role="tabpanel" aria-labelledby="t-compare" class="pane" hidden>
+          <p class="lede">Runs the same rewritten question through dense, keyword and hybrid retrieval so you can see where they agree.</p>
+          <button type="button" id="compare-btn">Compare for this question</button>
+          <div id="compare" class="compare"></div>
+        </div>
+        <div id="p-bench" role="tabpanel" aria-labelledby="t-bench" class="pane" hidden>
+          <p class="lede">Scores every retrieval setup on the gold question set. Intervals are bootstrap 95% ranges; overlapping ranges can be noise.</p>
+          <button type="button" id="bench-btn">Run benchmark</button>
+          <div id="bench"></div>
+        </div>
+      </div>
+
+      <aside class="reading" aria-label="How the question was read">
+        <h2>How I read your question</h2>
+        <div id="reading"></div>
+      </aside>
+    </article>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
