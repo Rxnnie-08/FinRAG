@@ -8,7 +8,7 @@ from finrag.server.app import create_app
 
 @pytest.fixture()
 def client(pipe, tmp_path):
-    app = create_app(pipe, Settings(home=tmp_path))
+    app = create_app(pipe, Settings(home=tmp_path, embedder="lsa"))
     return app.test_client()
 
 
@@ -73,7 +73,7 @@ def fresh(filings, chunks, tmp_path):
     from finrag.pipeline import RagPipeline
     from finrag.retrieval import build_index
     p = RagPipeline(build_index(chunks, "lsa"), filings, None, 6)
-    p.settings = Settings(home=tmp_path)
+    p.settings = Settings(home=tmp_path, embedder="lsa")
     return p, create_app(p, p.settings).test_client()
 
 
@@ -114,7 +114,7 @@ def test_upload_rejects_bad_files(fresh, tmp_path):
 def test_pipeline_build_upload_reload_with_qdrant_on_disk(filings, sample_dir, tmp_path):
     from finrag.ingestion import detect_meta
     from finrag.pipeline import RagPipeline
-    s = Settings(home=tmp_path, llm="none")
+    s = Settings(home=tmp_path, llm="none", embedder="lsa")
     p = RagPipeline.build(filings, s)
     assert p.info()["vector_store"] == "qdrant" and (tmp_path / "index" / "qdrant").exists()
     assert "4,680" in p.ask("What were Northwind Robotics' total assets at the end of fiscal 2024?").text

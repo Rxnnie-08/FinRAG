@@ -39,7 +39,10 @@ def make_lm(spec: str):
     dspy = _dspy()
     kind, _, arg = spec.partition(":")
     if kind == "ollama":
+        # Ollama's OpenAI-compatible endpoint. The native "ollama_chat/" route in litellm 1.108 returned 404 against a working Ollama.
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        if not host.startswith("http"):
+            host = "http://" + host
         return dspy.LM(f"openai/{arg or 'llama3.1:8b'}", api_base=host + "/v1", api_key="ollama", temperature=0.0, max_tokens=700)
     if kind == "anthropic":
         return dspy.LM(f"anthropic/{arg}", temperature=0.0, max_tokens=700)

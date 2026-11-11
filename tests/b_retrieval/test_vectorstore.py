@@ -132,3 +132,44 @@ def test_old_index_without_sparse_vectors_is_rejected_clearly(tmp_path):
     c.close()
     with pytest.raises(FileNotFoundError, match="older version"):
         QdrantIndex.attach(make_embedder("lsa"), tmp_path / "qdrant")
+
+
+def test_rebuild_over_stale_index_with_other_vector_size(tmp_path):
+    """A rebuild onto a folder that holds a collection with a different vector size must not fail."""
+    import random
+    from finrag.core.schema import Chunk
+    from finrag.retrieval.store import build_index
+    random.seed(1)
+    vocab = [f"w{chr(97 + i // 26)}{chr(97 + i % 26)}x" for i in range(900)]
+    def chunks(n):
+        return [Chunk(chunk_id=f"c#{i}", text=" ".join(random.choice(vocab) for _ in range(40)), company="Co", ticker="CO", filing_type="10-K",
+                      fiscal_year=2024, fiscal_period="FY", period_end="2024-12-31", accession="a", source="s", item="Item 7",
+                      section="s", note="", element_type="paragraph") for i in range(n)]
+    d = tmp_path / "qdrant"
+    build_index(chunks(400), "lsa", persist_dir=d).dense.close()
+    r = build_index(chunks(60), "lsa", persist_dir=d)
+    assert r.dense.n == 60
+    r.dense.close()
+
+
+def test_nomic_prefixes_and_fallback(monkeypatch):
+    """nomic gets document/query prefixes; an unreachable Ollama falls back to LSA with a note."""
+    import numpy as np
+    from finrag.retrieval import dense
+    sent = []
+
+    class R:
+        def raise_for_status(self): pass
+        def json(self): return {"embeddings": [[1.0, 0.0]] * len(sent[-1]["input"])}
+    import requests
+    monkeypatch.setattr(requests, "post", lambda url, json=None, timeout=0: (sent.append(json), R())[1])
+    e = dense.OllamaEmbedder("nomic-embed-text")
+    e.encode(["alpha"]); assert sent[-1]["input"] == ["search_document: alpha"]
+    e.encode(["beta"], is_query=True); assert sent[-1]["input"] == ["search_query: beta"]
+    dense.OllamaEmbedder("other-model").encode(["gamma"]); assert sent[-1]["input"] == ["gamma"]
+
+    monkeypatch.setenv("OLLAMA_HOST", "http://127.0.0.1:9")          # nothing listens here
+    emb, note = dense.resolve_embedder("ollama:nomic-embed-text")
+    assert emb.name == "lsa" and "LSA" in note and "not reachable" in note
+    emb, note = dense.resolve_embedder("lsa")
+    assert emb.name == "lsa" and note == ""

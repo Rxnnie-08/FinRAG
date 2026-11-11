@@ -42,7 +42,7 @@ class RagPipeline:
         llm, problem = resolve_llm(s.llm, s.dspy_program)
         pipe = cls(retriever, filings, llm, s.top_k, today)
         pipe.settings = s
-        pipe.notes = [problem] if problem else []
+        pipe.notes = ([problem] if problem else []) + list(getattr(retriever, "notes", []))
         return pipe
 
     @classmethod
@@ -57,6 +57,9 @@ class RagPipeline:
         pipe = cls(retriever, filings, llm, s.top_k, today)
         pipe.settings = s
         pipe.notes = [problem] if problem else []
+        have = retriever.dense.embedder.name
+        if s.embedder.startswith("ollama:") and have.startswith("lsa"):
+            pipe.notes.append(f"This index uses the weaker offline LSA embeddings, not {s.embedder}. Start Ollama and rebuild the index (finrag demo / finrag ingest) to switch.")
         return pipe
 
     def add_filing(self, meta: FilingMeta) -> dict:

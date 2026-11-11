@@ -1,11 +1,13 @@
 """Dense retrieval: pluggable embedders behind one interface.
 
   lsa                       TF-IDF + truncated SVD, fitted on the corpus. Offline and instant; a *weak* semantic
-                            baseline, which is exactly why it is the default for tests and demos.
+                            baseline, used for tests and as the automatic fallback when Ollama is not running.
   st:<model>                sentence-transformers, e.g. st:BAAI/bge-small-en-v1.5 (recommended for real runs)
-  ollama:<model>            local Ollama server embeddings, e.g. ollama:nomic-embed-text
+  ollama:<model>            local Ollama server embeddings; ollama:nomic-embed-text is the project default
 """
 from __future__ import annotations
+
+import os
 
 import numpy as np
 
@@ -62,16 +64,50 @@ class SentenceTransformerEmbedder(Embedder):
         return _l2(np.asarray(self.model.encode([pre + t for t in texts], batch_size=32, show_progress_bar=False)))
 
 
+def _ollama_host() -> str:
+    host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    return host if host.startswith("http") else "http://" + host
+
+
 class OllamaEmbedder(Embedder):
-    def __init__(self, model: str, base_url: str = "http://localhost:11434"):
+    """Embeddings from a local Ollama model. nomic-embed-text is trained with task prefixes, so chunks and questions get
+    different ones ("search_document: " / "search_query: "); without them its quality drops."""
+
+    def __init__(self, model: str, base_url: str | None = None):
         self.name = f"ollama:{model}"
-        self.model, self.base = model, base_url.rstrip("/")
+        self.model, self.base = model, (base_url or _ollama_host()).rstrip("/")
+        self.doc_prefix, self.query_prefix = ("search_document: ", "search_query: ") if "nomic" in model.lower() else ("", "")
 
     def encode(self, texts: list[str], is_query: bool = False) -> np.ndarray:
         import requests
-        r = requests.post(f"{self.base}/api/embed", json={"model": self.model, "input": texts}, timeout=300)
+        pre = self.query_prefix if is_query else self.doc_prefix
+        r = requests.post(f"{self.base}/api/embed", json={"model": self.model, "input": [pre + t for t in texts]}, timeout=300)
         r.raise_for_status()
         return _l2(np.asarray(r.json()["embeddings"], dtype="float32"))
+
+
+def ollama_embed_problem(spec: str) -> str:
+    """"" if the embedder is not an Ollama one, or the server is up and the model is pulled; else a one-line reason."""
+    import requests
+    kind, _, arg = spec.partition(":")
+    if kind != "ollama":
+        return ""
+    model, host = arg or "nomic-embed-text", _ollama_host()
+    try:
+        names = [m.get("name", "") for m in requests.get(f"{host}/api/tags", timeout=3).json().get("models", [])]
+    except Exception:
+        return f"Ollama is not reachable at {host}"
+    if model not in set(names) | {n.removesuffix(":latest") for n in names}:
+        return f"Ollama has no model '{model}' (run `ollama pull {model}`)"
+    return ""
+
+
+def resolve_embedder(spec: str) -> tuple[Embedder, str]:
+    """make_embedder that never takes the app down: if the Ollama embedder is unavailable, fall back to the offline LSA baseline
+    and return a note for the UI."""
+    if (problem := ollama_embed_problem(spec)):
+        return LSAEmbedder(), f"Embeddings: {problem}, so this index uses the weaker offline LSA baseline. Start Ollama and rebuild the index to use {spec}."
+    return make_embedder(spec), ""
 
 
 def _l2(m: np.ndarray) -> np.ndarray:

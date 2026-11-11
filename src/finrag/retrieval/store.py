@@ -7,6 +7,7 @@ index folders you built yourself.
 from __future__ import annotations
 
 import json
+import shutil
 import pickle
 from pathlib import Path
 
@@ -15,7 +16,7 @@ import numpy as np
 from finrag.core.schema import Chunk
 
 from .bm25 import BM25Index
-from .dense import DenseIndex, LSAEmbedder, make_embedder
+from .dense import DenseIndex, LSAEmbedder, make_embedder, ollama_embed_problem, resolve_embedder
 from .hybrid import Retriever
 
 
@@ -26,14 +27,25 @@ def build_index(chunks: list[Chunk], embedder: str = "lsa", candidates: int = 50
         raise ValueError("No chunks to index. Ingest some filings first.")
     texts = [c.index_text for c in chunks]
     sparse = BM25Index().fit(texts)
+    emb, note = resolve_embedder(embedder)
     if vector_store == "qdrant":
-        from .vectorstore import QdrantIndex, payload_of
-        dense = QdrantIndex(make_embedder(embedder), persist_dir).fit(texts, [payload_of(c) for c in chunks], sparse)
+        from .vectorstore import QdrantIndex, payload_of, server_url
+        if persist_dir is not None and not server_url() and Path(persist_dir).exists():
+            # A rebuild starts from an empty folder. Reusing an old local collection (for example one built with a different
+            # vector size) fails with a numpy "could not broadcast" error, so never rely on deleting it in place.
+            try:
+                shutil.rmtree(persist_dir)
+            except OSError as e:
+                raise RuntimeError(f"Could not clear the old index folder {persist_dir} ({e}). Stop `finrag serve` or any other finrag "
+                                   "process that uses it, or delete the folder by hand, then try again.") from e
+        dense = QdrantIndex(emb, persist_dir).fit(texts, [payload_of(c) for c in chunks], sparse)
     elif vector_store == "numpy":
-        dense = DenseIndex(make_embedder(embedder)).fit(texts)
+        dense = DenseIndex(emb).fit(texts)
     else:
         raise ValueError(f"Unknown vector store '{vector_store}'. Use qdrant | numpy.")
-    return Retriever(chunks, dense, sparse, candidates=candidates, rrf_k=rrf_k)
+    r = Retriever(chunks, dense, sparse, candidates=candidates, rrf_k=rrf_k)
+    r.notes = [note] if note else []
+    return r
 
 
 def save_index(r: Retriever, folder: str | Path) -> None:
@@ -63,6 +75,9 @@ def load_index(folder: str | Path) -> Retriever:
         with open(folder / "embedder.pkl", "rb") as f:
             emb = pickle.load(f)
     else:
+        if (problem := ollama_embed_problem(meta["embedder"])):
+            raise RuntimeError(f"This index was built with {meta['embedder']} and questions must be embedded with the same model: {problem}. "
+                               "Start Ollama, or rebuild the index with FINRAG_EMBEDDER=lsa.")
         emb = make_embedder(meta["embedder"])
     if meta.get("vector_store") in ("qdrant",):
         from .vectorstore import QdrantIndex
